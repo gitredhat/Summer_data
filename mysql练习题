@@ -1,0 +1,72 @@
+1、查询Student表中的所有记录的Sname、Ssex和Class列。
+select Sname,Ssex,Class from Student;
+2、查询教师所有的单位即不重复的Depart列。
+select distinct(Depart) from Teachar;
+3、查询Student表的所有记录。
+select * from Student;
+4、查询Score表中成绩在60到80之间的所有记录。
+select * from Score where Degree between 60 and 80;
+5、查询Score表中成绩为85，86或88的记录。
+select * from Score where Degree in (85,86,88);
+6、查询Student表中“95031”班或性别为“女”的同学记录。
+select * from Student where Class="95031" or Ssex="女";
+7、以Class降序查询Student表的所有记录。
+select * from Student order by Class desc;
+8、以Cno升序、Degree降序查询Score表的所有记录。
+select * from Score  order by Cno;
+select * from Score order by Degree desc;
+9、查询“95031”班的学生人数。
+select count(Class) from Student where Class="95031";
+10、 查询Score表中的最高分的学生学号和课程号。（排序）
+select Sno,Cno,from Score where Degree in (select max(Degree) from Score );
+11、查询每门课的平均成绩。
+select avg(Degree) from Score where Cno="3-105";-----------> 81.50000
+select avg(Degree) from Score where Cno="3-245";----------->76.33333
+select avg(Degree) from Score where Cno="6-166";----------->81.66667
+select avg(Degree) from Score where Cno="9-888";-----------> NULL
+
+12、查询Score表中至少有5名学生选修的并以3开头的课程的平均分数。
+select avg(Degree) from Score where Cno regexp '^3' group by Cno having count(Cno)>5;
+13、查询分数大于70，小于90的Sno列。
+select Sno from Score where Degree > 70 or Degree < 90 ;
+14、 查询“95033”班学生的平均分。
+select avg(Degree) from Score,Student where Class="95033";
+15、查询95033班和95031班全体学生的记录。
+Select Student.*,  Teachar.Tname,Teachar.Tno,Teachar.Tsex,Teachar.Tbirthday,Teachar.prof,Teachar.Depart,  Course.Cno,Course.Cname,  Score.Degree    
+from Student,Score,Course,Teachar   
+where (Student.Class='95033' or Student.Class='95031')   
+and Student.Sno=Score.Sno   
+and Score.Cno=Course.Cno   
+and Course.Tno=Teachar.Tno;
+效果：
++-----+--------+------+---------------------+-------+--------+-----+------+---------------------+-----------+-----------------+-------+-----------------+--------+
+| Sno | Sname  | Ssex | Sbirthd             | Class | Tname  | Tno | Tsex | Tbirthday           | prof      | Depart          | Cno   | Cname           | Degree |
++-----+--------+------+---------------------+-------+--------+-----+------+---------------------+-----------+-----------------+-------+-----------------+--------+
+| 101 | 李军   | 男   | 1976-02-20 00:00:00 | 95033 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   64.0 |
+| 103 | 陆君   | 男   | 1974-06-03 00:00:00 | 95031 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   92.0 |
+| 105 | 匡明   | 男   | 1975-10-02 00:00:00 | 95031 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   88.0 |
+| 107 | 王丽   | 女   | 1976-01-23 00:00:00 | 95033 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   91.0 |
+| 108 | 曾华   | 男   | 1977-09-01 00:00:00 | 95033 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   78.0 |
+| 109 | 王芳   | 女   | 1975-02-10 00:00:00 | 95031 | 王萍   | 825 | 女   | 1972-05-05 00:00:00 | 助教      | 计算机系        | 3-105 | 计算机导论      |   76.0 |
+| 103 | 陆君   | 男   | 1974-06-03 00:00:00 | 95031 | 李诚   | 804 | 男   | 1958-12-02 00:00:00 | 副教授    | 计算机系        | 3-245 | 操作系统        |   86.0 |
+| 105 | 匡明   | 男   | 1975-10-02 00:00:00 | 95031 | 李诚   | 804 | 男   | 1958-12-02 00:00:00 | 副教授    | 计算机系        | 3-245 | 操作系统        |   75.0 |
+| 109 | 王芳   | 女   | 1975-02-10 00:00:00 | 95031 | 李诚   | 804 | 男   | 1958-12-02 00:00:00 | 副教授    | 计算机系        | 3-245 | 操作系统        |   68.0 |
+| 101 | 李军   | 男   | 1976-02-20 00:00:00 | 95033 | 张旭   | 856 | 男   | 1969-03-12 00:00:00 | 讲师      | 电子工程系      | 6-166 | 数字电路        |   85.0 |
+| 107 | 王丽   | 女   | 1976-01-23 00:00:00 | 95033 | 张旭   | 856 | 男   | 1969-03-12 00:00:00 | 讲师      | 电子工程系      | 6-166 | 数字电路        |   79.0 |
+| 108 | 曾华   | 男   | 1977-09-01 00:00:00 | 95033 | 张旭   | 856 | 男   | 1969-03-12 00:00:00 | 讲师      | 电子工程系      | 6-166 | 数字电路        |   81.0 |
++-----+--------+------+---------------------+-------+--------+-----+------+---------------------+-----------+-----------------+-------+-----------------+--------+
+
+16、  查询存在有85分以上成绩的课程Cno.
+select Cno from Score where Degree >="85";
+17、查询至少有2名男生的班号。
+select nclass from (select count(*) as csc,class as nclass from Student where ssex='男' group by class ) as newstuden where csc>=2;
+18、查询Student表中不姓“王”的同学记录。
+select * from Student where Sname not like '王%';
+19、查询Student表中每个学生的姓名和年龄。
+select Sname,2018-year(Sbirthd) from Student;
+20、查询Student表中最大和最小的Sbirthday日期值。
+select max(date(Sbirthd)),min(date(Sbirthd)) from Student;
+21、以班号和年龄从大到小的顺序查询Student表中的全部记录。
+select * from Student order by Class desc;
+22、查询“男”教师及其所上的课程。
+select Cname,Tname from Teachar,Course  where Teachar.Tno=Course.Tno and Tsex="男";
