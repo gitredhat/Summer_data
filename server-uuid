@@ -1,5 +1,7 @@
-错误信息：致命错误：从站I / O线程停止，因为主站和从站具有相同的MySQL服务器UUID; 这些UUID必须不同才能使复制正常工作。
+错误信息：Fatal error: The slave I/O thread stops because master and slave have equal MySQL server UUIDs; 
+these UUIDs must be different for replication to work.
 以上错误信息是：致命错误：从站I / O线程停止，因为主站和从站具有相同的MySQL服务器UUID; 这些UUID必须不同才能使复制正常工作。
 解决方案：1，cd / var / lib / mysql
-2，vi auto.cnf ----------------> server-uuid = 2f108b5d-d59c-11e8-9915-52540063b739
-3，server-uuid
+2.vi auto.cnf ----------------> server-uuid = 2f108b5d-d59c-11e8-9915-52540063b739
+3.server-uuid稍微改动一下，
+4.重起mysqld
