@@ -1,0 +1,3 @@
+报错信息:ERROR 1054 (42S22): Unknown column 'password_last_changed' in 'mysql.user'
+执行该命令mysql_upgrade -u root -p
+然后重器服务
