@@ -1,0 +1,939 @@
+mysql-day06 部署mysql主从同步
+一、什么是mysql主从同步
+主：正在被客户端访问的数据库服务器，被称作主库服务器。
+从：自动同步主库上的数据的数据库服务器，被称作从库服务器。
+###############################################################################
+配置主库，启用binlog日志  用户授权  查看当前正使用的日志
+配置主库步(*一主一从)、(主从从)
+1.vim /etc/my.cnf
+    server-id=51
+    log-bin=mysql51
+    binlog-format="mixed"
+systemctl  restart mysqld
+ls /var/lib/mysql/mysql51.*----------------------查看是否有binlog日志文件
+2.授权用户
+mysql>grant replication slave on *.* to repluser@"%" identified by "AA12..aa";
+show master startus;
+grant select,insert,update on db1.* to admin@"%" identified by "AA12..aa";
+配置从库步(*一主一从)、(主从从)
+1.vim /etc/my.cnf
+server_id=52------------->插入一行
+log_slave_updates----------------------当服务器即做从库又做主库时加此行
+log-bin=slave52------------------------当服务器即做从库又做主库时加此行
+binlog-format="mixed"------------------当服务器即做从库又做主库时加此行
+systemctl restart mysqld
+grant replication slave on *.* to repluser2@"%" identified by "AA12..aa";---->
+--------当服务器即做从库又做主库时创建slave用户
+2.change master to master_host="192.168.4.51",--------->主库ip地址
+master_user="repluser",-------------------------------->主库授权用户名
+master_password="AA12..aa",---------------------------->授权用户密码
+master_log_file="mysql51.000001",---------------------->binlog日志文件
+master_log_pos=441;------------------------------------>偏移量(偏移位置)
+show slave status\G;----------------------------------->查看slave
+start slave;------------------------------------------->启动slave进程
+show master status;------------------------------------>查看偏移量
+##############################################################################
+配置从库步(主从从)
+1.vim /etc/my.cnf
+server_id=52------------->插入一行
+systemctl restart mysqld
+2.change master to master_host="192.168.4.52",--------->主库ip地址
+master_user="repluser",-------------------------------->主库授权用户名
+master_password="AA12..aa",---------------------------->授权用户密码
+master_log_file="mysql52.000001",---------------------->binlog日志文件
+master_log_pos=4966;----------------------------------->偏移量(偏移位置)
+show slave status\G;----------------------------------->查看slave
+start slave;------------------------------------------->启动slave进程
+#############################################################################
+在客户端验证:
+mysql -h192.168.4.52 -uadmin -pAA12..aa
+#############################################################################
+将主从数据库服务恢复独立的数据库服务器(完全备份)
+1.mysql> stop slave;------------------------>把slave服务关闭
+2.mysql> show slave status\G;--------------->查看slave状态
+3.vim /etc/my.cnf--------------------------->把先前添加的命令给删除或注释
+4.rm -rf  /var/lib/mysql/master.info
+5.rm  -rf   主机名-relay-bin.XXXXXX   主机名-relay-bin.index   relay-log.info
+systemctl  restart mysqld
+#############################################################################
+写在主库配置文件里参数(对所有从库都有效)
+1.binlog_do_db=库名列表------------------->允许只同步的库
+2.binlog_ignore_db=库名列表------------>不允许同步的库
+写在从库配置文件里参数(只针对从库本机有效)
+1.replicate_do_db=库名列表--------------->指定只同步的库
+2.replicate_ignore_db=库名列表------->指定不同步的库
+#############################################################################
+配置半同步复制模式
+查看当前的数据库服务是否支持动态加载模块:show variadles like "have_dynamic_loading";
+使用命令安装模块
+mysql>install plugin rpl_semi_sync_master soname "semisync_master.so"
+mysql>install plugin rpl_semi_sync_slave soname  'semisync_slave.so';
+查看模块状态
+mysql>
+SELECT  PLUGIN_NAME, PLUGIN_STATUS FROM INFORMATION_SCHEMA.PLUGINS  
+WHERE PLUGIN_NAME LIKE '%semi%'
+select plugin_name,plugin_status from information_schema.plugins 
+where plugin_name like '%semi%'
+启用半同步复制
+mysql> SET GLOBAL rpl_semi_sync_master_enabled = 1;
+mysql> SET GLOBAL rpl_semi_sync_slave_enabled = 1;
+查看是否启用成功
+mysql>  show  variables  like  'rpl_semi_sync_%_enabled';
+#############################################################################
+把配置写进配置文件，使其永久生效
+vim /etc/my.cnf
+[mysqld]
+plugin-load = "rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so"
+rpl-semi-sync-master-enabled = 1
+rpl-semi-sync-slave-enabled = 1
+##############################################################################
+mysql读写分离:------>把客户端查询数据的请求分别给不同的数据库服务器处理;
+1.2 为什么要对数据做读写分离？
+减轻单台数据库服务器的并发访问压力
+提高数据库服务器硬件利用率
+#########################################################################
+能够实现数据读写分离软件有很多个（比如mycat   mysql-proxy  maxscale） 统称叫中间件
+#########################################################################
+                               配置MySQL数据读写分离结构
+
+能够实现数据读写分离软件有很多个
+（比如mycat  mysql-proxy  maxscale(灭系嚼)） 统称叫中间件
+1 配置MySQL 一主一从 同步结构：要求把51配置为52的从库
+2 准备代理服务器：
+把此 maxscale-2.1.2-1.rhel.7.x86_64.rpm 软件拷贝到53主机  
+停止MySQL数据库服务（现在使用53主机做代理服务器）
+3 配置代理服务器主机53
+3.1 装包
+]# rpm -ivh maxscale-2.1.2-1.rhel.7.x86_64.rpm
+mv mysql-5.7.20-linux-glibc2.12-x86_64 /usr/local/mysql
+3.2 修改主配置文件
+]# cp /etc/maxscale.cnf /root/
+]# vim /etc/maxscale.cnf
+  9 [maxscale]  #定义服务启动线程的数量
+ 10 threads=auto
+
+ 18 [server1]   #指定第1台数据库服务
+ 19 type=server
+ 20 address=192.168.4.51 #指定数据库服务ip地址
+ 21 port=3306            #端口号
+ 22 protocol=MySQLBackend
+
+ 24 [server2]  #指定第2台数据库服务
+ 25 type=server
+ 26 address=192.168.4.52
+ 27 port=3306
+ 28 protocol=MySQLBackend #协议= MySQLBackend
+
+ 36 [MySQL Monitor]  #定义监控的数据库服务器
+ 37 type=monitor    #监视器
+ 38 module=mysqlmon #模块= mysqlmon
+ 39 servers=server1, server2  //服务器列表
+ 40 user=scalemon      //用户名
+ 41 passwd=123qqq...A  //密码
+ 42 monitor_interval=10000
+
+ 53 #[Read-Only Service]  #不定义只读服务
+ 54 #type=service
+ 55 #router=readconnroute
+ 56 #servers=server1
+ 57 #user=myuser
+ 58 #passwd=mypwd
+ 59 #router_options=slave
+
+ 64 [Read-Write Service]  #定义读写分离服务
+ 65 type=service
+ 66 router=readwritesplit #路由器= readwritesplit
+ 67 servers=server1, server2 #数据库服务器列表
+ 68 user=maxscale   #用户
+ 69 passwd=123qqq...A #密码
+ 70 max_slave_connections=100%
+
+ 76 [MaxAdmin Service]  定义管理服务
+ 77 type=service
+ 78 router=cli
+
+ 86 #[Read-Only Listener] 不定义只读服务
+ 87 #type=listener
+ 88 #service=Read-Only Service
+ 89 #protocol=MySQLClient
+ 90 #port=4008
+
+ 92 [Read-Write Listener] #定义读写分离服务使用的端口
+ 93 type=listener
+ 94 service=Read-Write Service
+ 95 protocol=MySQLClient
+ 96 port=4006
+
+ 98 [MaxAdmin Listener]  #定义管理服务使用的端口
+ 99 type=listener
+100 service=MaxAdmin Service
+101 protocol=maxscaled
+102 socket=default
+103 port=4016
+########################################################################
+3.3 根据配置文件的设置，在数据库服务器上添加
+对应的授权用户scalemon 和 maxscale
+
+在主库52 做用户授权，51主会自动把授权操作同步到本机。
+mysql>
+grant replication slave,replication client on *.* 
+to scalemon@"%"  identified by "123qqq...A";
+
+mysql> 
+grant select on mysql.* to maxscale@"%" 
+identified by  "123qqq...A";
+
+授权对数据有访问权限的用户
+mysql> create database db2;
+mysql> create table  db2.a(id int);
+mysql> grant  select,insert on  db2.*  to  webuser@"%"
+identified by  "123qqq...A";
+
+3.4 启动服务并查看服务信息
+[root@proxy53 ~]# maxscale  -f /etc/maxscale.cnf
+[root@proxy53 ~]# netstat -utnlp  | grep :4016
+[root@proxy53 ~]# netstat -utnlp  | grep :4006
+
+3.5 在53本机访问管理服务查看配置信息
+[root@proxy53 ~]# maxadmin -uadmin -pmariadb -P4016
+list servers
+
+3.6 测试读写分离配置：在客户端50连接代理服务器，访问数据，
+能够实现数据读写分离功能
+
+client50]#
+mysql -h192.168.4.53 -P4006 -uwebuser  -p123qqq...A
+mysql> 执行select或insert操作
+
+            mysql多实列
+在主机50上做多实例实验
+把软件mysql-5.7.20-linux-glibc2.12-x86_64.tar.gz 
+拷贝到主机50里  
+多实例：在1台服务上运行多个数据库服务器
+
+1、停止其他软件提供的MySQL服务
+client50 ~]# systemctl  stop mysqld
+]# mv /etc/my.cnf  /root/
+
+2、安装提供多实例服务的MySQL软件包
+client50 ~]# 
+tar -zxvf mysql-5.7.20-linux-glibc2.12-x86_64.tar.gz
+client50 ~]# 
+mv mysql-5.7.20-linux-glibc2.12-x86_64 /usr/local/mysql
+
+3、创建主配置文件
+vim /etc/my.cnf
+[mysqld_multi]
+mysqld=/usr/local/mysql/bin/mysqld_safe
+mysqladmin=/usr/local/mysql/bin/mysqladmin
+user=root
+[mysqld1]
+datadir=/datadir3307
+socket=/datadir3307/mysql3307.sock
+port=3307
+log-error=/datadir3307/mysqld3307.log
+pid-file=/datadir3307/mysqld3307.pid
+[mysqld2]
+datadir=/datadir3308
+socket=/datadir3308/mysql3308.sock
+port=3308
+log-error=/datadir3308/mysqld3308.log
+pid-file=/datadir3308/mysqld3308.pid
+:wq
+[root@client50 mysql]# mkdir /datadir3307
+[root@client50 mysql]# mkdir /datadir3308
+
+4、启动多实例服务 并查看端口
+]#/usr/local/mysql/bin/mysqld_multi start 1
+最后1行会显示 首次登录密码
+
+]# netstat -utnlp  | grep  :3307
+
+5、访问多实例服务
+]# /usr/local/mysql/bin/mysql -uroot -p'hNwsD1Tmpo%Q' 
+-S /datadir3307/mysql3307.sock
+
+修改登录密码
+mysql> alter user root@"localhost" identified by "123456";
+
+使用修改后的密码登录
+]#/usr/local/mysql/bin/mysql -uroot -p123456 
+-S /datadir3307/mysql3307.sock
+
+建库 建表
+mysql> show databases;
+mysql> create database db2;
+mysql> exit
+
+查看数据库目录文件
+[root@client50 ~]# ls /datadir3307/
+
+6 启动多实例服务
+[root@client50 ~]# netstat -utnlp  | grep mysqld
+
+[root@client50 ~]# /usr/local/mysql/bin/mysqld_multi  --user=root --password=123456 stop 1
+
+source /root/mysql.bac;
+############################################################################################
+                                              MHA集群
+
+manager(灭利者)、，master(麦系者 )
+1.配置mysql主从同步结构，一主(俩从做备主)多从
+配置主从同步,要求如下：
+51 主库		    开半同步复制
+set global relay_log_purge=off; //不允许自动删除中继日志文件
+52 从库（备用主库）  开半同步复制
+53 从库（备用主库）  开半同步复制
+54 从库 不做备用主库所以不用开半同步复制 
+55 从库 不做备用主库所以不用开半同步复制
+2.无密码登陆，配置所有数据节点主机之间可以互相以ssh密钥对方式认证登陆:
+ssh-keygen -f /root/.ssh/id_rsa -N ''
+for i in  52 53 54 55 56; do ssh-copy-id 192.168.4.$i; done
+3.修改配置文件(主库、备用主库)
+vim  /etc/my.cnf
+[mysqld]
+plugin-load = "rpl_semi_sync_master=semisync_master.so;rpl_semi_sync_slave=semisync_slave.so"
+rpl-semi-sync-master-enabled = 1
+rpl-semi-sync-slave-enabled = 1
+server_id=51
+log-bin=master51
+binlog-format="mixed"
+4.装包(公共配置：在所有主机上安装软件软件包)
+
+主机角色 ：
+客户端       client50
+数据库服务器 mysql51 到 mysql55
+管理主机     mgm56
+VIP地址      192.168.4.100
+
+拓扑结构：
+
+      client50  ]#mysql  -hvip  -utestusr  -p123qqq...A
+
+         | 
+      mysql51主  
+         |  
+---------------------------------------------
+   |        |        |        |         |
+mysql52  mysql53  mysql54  mysql55    mgm56
+ 从        从        从      从       管理集群
+备用主   备用主
+
+
+
+配置MySQL主从同步结构：一主多从
+配置主库51
+配置备用从库52
+配置备用从库53
+配置纯从库54
+配置纯从库55
+++++++++++++++++++++++++++++++++++
+准备集群环境：
+1 在所有主机上安装共享目录里的perl软件包 （51-56）
+2 在所有数据库服务器51-55上授权监控用户
+mysql>
+grant all  on *.* to   root@'%'  identified  by  '123qqq...A'; 
+3 在所有服务器51-56上安装mha_node软件包
+]#cd mha-soft-student/
+]#yum -y  install perl-DBD-mysql
+]#rpm -ivh  mha4mysql-node-0.56-0.el6.noarch.rpm
+4 在管理主机56上安装mha_manager软件包
+# yum -y  install perl-ExtUtils-*   perl-CPAN-*
+# tar -zxf  mha4mysql-manager-0.56.tar.gz 
+# cd  mha4mysql-manager-0.56
+# perl  Makefile.pl
+# make
+# make  install
+
+5 配置ssh密钥认证登录
+5.1 管理主机56 可以无密码ssh 所有数据库服务器51-55
+5.2 数据库服务器主机之间可以互相无密码ssh连接
+++++++++++++++++++++++++++++++++++++++++
+三、配置MHA:
+3.1 在管理主机56上创建管理命令
+]# mkdir /root/bin
+]#cd mha4mysql-manager-0.56/bin  
+]#cp   *  /root/bin/
+
+3.2 创建主配置 并编辑
+]# mkdir /etc/mha
+]#cp  mha4mysql-manager-0.56/samples/conf/app1.cnf  /etc/mha/
+
+]#vim /etc/mha/app1.cnf
+[server default]  #服务默认配置
+manager_workdir=/etc/mha   #工作目录
+manager_log=/etc/mha/manager.log #日志文件
+#故障切换脚本
+master_ip_failover_script=/etc/mha/master_ip_failover
+
+#ssh服务用户名及端口
+ssh_user=root
+ssh_port=22
+
+#主从复制时，从库连接主库的用户名及密码
+repl_user=repluser
+repl_password=123qqq...A
+
+#监控数据库时，连接服务器的用户及密码
+user=root
+password=123qqq...A
+
+指定数据库服务器ip及角色
+[server1]
+hostname=192.168.4.61
+candidate_master=1
+[server2]
+hostname=192.168.4.62
+candidate_master=1
+[server3]
+hostname=192.168.4.63
+candidate_master=1
+[server4]
+hostname=192.168.4.64
+no_master=1
+[server5]
+hostname=192.168.4.65
+no_master=1
+:wq
+
+创建故障切换脚本并编辑
+]# cd mha-soft-student
+]# cp master_ip_failover /etc/mha/
+]# chmod  +x /etc/mha/master_ip_failover
+
+]# vim /etc/mha/master_ip_failover
+ 35 my $vip = '192.168.4.100/24';  # Virtual IP 
+ 36 my $key = "1";
+ 37 my $ssh_start_vip = "/sbin/ifconfig eth0:$key $vip";
+ 38 my $ssh_stop_vip = "/sbin/ifconfig eth0:$key down";
+:wq
+
+把脚本中指定的ip地址手动部署在当前主库51 上。
+
+mysql51]#  ifconfig  eth0:1  192.168.4.100/24
+mysql51]#  ifconfig  eth0:1
+
+3.3 启动服务
+3.3.1  检查ssh连接
+mgm56]# masterha_check_ssh --conf=/etc/mha/app1.cnf
+
+Wed Oct 24 14:32:35 2018 - 
+[info] All SSH connection tests passed successfully.
+
+3.3.2  检查主从同步配置
+mgm56]# masterha_check_repl --conf=/etc/mha/app1.cnf
+
+MySQL Replication Health is OK.
+
+3.3.3  启动管理服务
+mgm56]#
+masterha_manager --conf=/etc/mha/app1.cnf  \
+--remove_dead_master_conf --ignore_last_failover
+
+
+3.4 查看状态
+]# masterha_check_status --conf=/etc/mha/app1.cnf
+app1 (pid:9541) is running(0:PING_OK), master:192.168.4.61
+
+
+3.5 测试配置
+
+3.5.1 在客户端50主机上连接vip 192.168.4.100 访问数据库服务
+
+主库做用户授权
+mysql51>create database db3;create table db3.a(id int);
+mysql51>grant select,insert  on  db3.* to plj@"%" identified
+by  "123qqq...A";
+
+客户端使用授权用户连接
+client50]# mysql -h192.168.4.100  -uplj -p123qqq...A  db3
+mysql> 
+mysql> insert  into db3.a values(100);
+Query OK, 1 row affected (0.07 sec)
+mysql> select  * from db3.a;
+
+3.5.1 测试高可用配置
+把主库51的数据库服务停止 
+客户端仍然可以连接VIP地址192.168.4.100 访问数据库服务
+
+mysql51]# systemctl stop mysqld
+
+client50]# ping  -c 2  192.168.4.100
+
+client50]# mysql -h192.168.4.100  -uplj  -p123qqq...A  db3
+mysql> select  @@hostname;
+mysql> select * from  db3.a;
+mysql> insert into db3.a values(101);
+
+在/etc/mha/app1.cnf文件没有了主库51的配置
+数据库53 - 55  把 主库地址指向 新选举出的主库ip地址
+
+3.5.2  把坏掉的数据库服务器51 再添加到集群里。
+MySQL51]# systemctl  start mysqld
+MySQL51]# mysql -uroot  -p123qqq...A
+
+mysql> change master to  master_host="192.168.4.52",
+    -> master_user="repluser",
+    -> master_password="123qqq...A",
+    -> master_log_file="master52.000002", 当前主库日志
+    -> master_log_pos=1237; 对应的pos点
+mysql> start slave;
+mysql> show  slave status\G;  IO 和SQL 进程都是Yes 主机ip 52
+
+mgm56]# vim /etc/mha/app1.cnf
+[server1]
+candidate_master=1
+hostname=192.168.4.51
+:wq
+
+mgm56]# 
+masterha_manager --conf=/etc/mha/app1.cnf  \
+--remove_dead_master_conf --ignore_last_failover
+
+3.4 查看状态
+mgm56]# masterha_check_status --conf=/etc/mha/app1.cnf
+app1 (pid:9541) is running(0:PING_OK), master:192.168.4.52
+
+把主库52的数据库服务停止后，客户端仍然可以连接
+vip地址192.168.4.100 访问MySQL数据库服务.
+
+
+
+#################################################################################
+创建视图
+create view 视图名称 as sql查询;
+create view 视图名称(字段名列表) as sql查询;
+
+创建存储过程的语法格式
+调用存储过程
+查看存储过程
+删除存储过程
+mysql服务变量: 会话变量  系统变量  自定义变量   局部变量
+show global variables;-----------查看全局变量
+show session variables;----------查看会话变量
+set session sort_buffer_size=40000;--------设置会话变量
+show session variables like "sort_buffer_size";-----查看会话变量
+参数类型
+create procedure 名称(
+类型 参数名 数据类型，
+)
+in---------------------输入参数
+out--------------------输出参数
+inout------------------输入输出参数
+举例:
+delimiter //
+create  procedure p1(in username char(20))
+begin
+select username;
+select * from user where name=username;
+end
+//
+delimiter ;
+
+
+delimiter //
+create procedure p20(in w int(2))
+begin
+	declare x int(2);
+	declare y int(2);
+	declare z int(2);
+	set z = 0;
+	set x = 1;
+	while x <= w do
+		select uid into y from db9.user where id=x;
+		if y%2=0 then
+			set z =z +1;
+			select name from db9.user where id=x;
+			end if;
+			set x =x+1;
+		end while;
+		select z;
+end
+//
+delimiter ;
+
+create procedure p9(in linenum int(2)) begin if linenum is not null then select * from db9.user where id=linenum; else select * from db9.user where id=1; end if; end//
+
+create procedure p10() begin declare x int(2); set x=10; while x <= 20 do select x; set x = x +1; end while; end//
+
+覆盖方式创建新视图
+mysql> create or replace view  v3 as select  * from db9.user;
+指定视图算法
+create ALGORITHM=TEMPTABLE view v6 as select  * from db9.user;
+with check option选项的使用
+with local check option  对视图里的数据访问时，只检查视图创建条件，不检查基表创建条件。
+with CASCADED check option  对视图里的数据访问时，既检查视图创建条件，又检查基表创建条件
+##################################################################################
+二、MySQL存储过程
+1.查看全局变量
+2.查看会话变量
+3.自定义变量
+4.用户变量
+
+如何解决单表多大问题
+#################################################################################
+mysql性能优化
+1.搭建监控服务器；监控服务的硬件使用率:cpu(uptime)、内存、存储、网络流量(进、出)、硬盘
+2.数据库服务运行参数:vim /etc/my.cnf
+set global status;---------查看全局
+show variables；-----------查看当前
+并发连接数:show variables like "%max_connections%";set global max_connections=300;
+曾经最大连接:show global status like "%conn%";  Max_used_connections  | 11
+100/x=0.85
+show processlist---------->查看谁在连接
+连接超时、连接数
+show global status like "max_used_connections";------------查看当前已使用的连接数
+max_connestions -----------------允许的最大并发连接数
+connect_timeout -----------------等待连接超时，默认10秒，仅登陆时有效
+wait_timeout---------------------等待关闭连接的不活动超时秒数，默认28800秒(8小时)
+####################################################################################
+key_buffer_size---------------------------用于MyISAM引擎的关键索引缓存大小
+sort_buffer_size--------------------------为每个要排序的线程分配此大小的缓存空间
+read_buffer_size--------------------------为顺序读取表记录保留的缓存大小
+thread_cache_size-------------------------允许保存在缓存中被重用的线程数量
+table_pen_cache---------------------------为所有线程缓存的打开表的数量
+缓存参数控制
+show global status like "%key_reads%";
+show global status like "%key_read_requests%";
+show variables like "sort_buffer_size";
+show variables like "read_%_size";-----查看表记录读取缓存
+show variables like "thread_%_size";---查看可重用线程数
+show global status like "threads_%";---查看当前的线程重用状态
+show global status like "open%tables";-查看已打开、打开过多少个表
+show variables like "table_open_cache";查看可缓存多少个打开的表
+#################################################################################
+sql查询优化
+查询日志:记录所有sql命令
+1.general-log------启用查询日志
+2.general-log-file=目录----------默认是mysql目录
+查看日志文件:1.tail -f /var/lib/mysql/node1.log
+3.vim /var/lib/mysql/node1.log
+启用文件格式:node1.log
+###############################################################################
+慢查询日志:
+1.slow-query-log------启用查询日志
+2.slow-query-log-file=文件----------默认存放mysql目录，node1-slow.log
+3.long-query-time=-------------超时时间，默认是十秒
+4.log-queries-not-using-indexes---记录未使用索引的查询
+启用文件格式:node1-slow.log
+统计慢查询日记记录:mysqldumpslow /var/lib/mysql/node1-slow.log > /tmp/sql.txt
+##############################################################################
+优化网络架构: 结构中不要有数据传输瓶颈，不要有单点故障
+
+关于查询的缓存
+show variables like  "%query_cache%"；------查看缓存的大小
+show global status like "%qcache%";---------查看当前的查询缓存统计
+##############################################################################
+分库分表mycat
+配置mycat
+1.装包-------->Mycat-server-1.4-beta-20150604171601-linux.tar.gz
+检查是否安装jdk;java -version 或者rpm -qa | grep -i jdk
+解压包---->tar -vxf  Mycat-server-1.4-beta-20150604171601-linux.tar.gz
+解压后有一个mycat目录
+mv mycat /usr/local/
+ls /usr/local/mycat/
+bin--------------命令 
+catlet-----------  
+conf-------------配置文件(server.xml---->设置连mycat的帐号；schema.xml)
+lib--------------mycat使用
+logs-------------
+version.txt------
+
+2.
+3.修改配置文件
+vim /usr/local/mycat/conf/server.xml 
+
+################################################################################
+NOSQL         redis()
+###############################################################################
+rdbms软件:
+什么是关系数据库管理系统
+按照预先设置的组织结构，将数据存储在物理介质上；数据之间可以做关联操作
+主流rdbms服务软件
+1.Oracle 2.DB2  3.MS SQL Server  4.MySQL   5.MariaDB
+
+NoSQL不仅是SQL，泛指非关系型数据库，不需要预先定义数据库存储结构，表的每条记录都可以有不同
+的类型和结构
+NoSQL服务软件:
+1.Redis  2.Monmcached  3.CouchDB   4.Neo4j   5.FlockDB
+
+Redis介绍
+是一款高性能的(key/Values)分布式内存数据库，支持数据库持久化，可以把内存里的数据库保存到硬盘中，也支持 list 、hash、set、zset 数据类型，支持 master-salve 模式数据备份
+中文网站www.redis.cn
+##############################################################################
+搭建Redis数据库服务器192.168.4.50
+1.yum -y install gcc
+tar -zxvf redis-4.0.8.tar.gz
+cd redis-4.0.8
+make && make install
+初始化:./utils/install_server.sh
+Port           : 6379-------------------------------端口
+Config file    : /etc/redis/6379.conf---------------主配置文件
+Log file       : /var/log/redis_6379.log------------日志目录
+Data dir       : /var/lib/redis/6379----------------数据库目录
+Executable     : /usr/local/bin/redis-server--------启动程序的目录
+Cli Executable : /usr/local/bin/redis-cli-----------命令行连接命令
+服务管理
+/etc/init.d/redis_6379 status-----------查看状态
+/etc/init.d/redis_6379 start------------启动
+/etc/init.d/redis_6379 stop-------------关闭
+常用操作指令:
+1.select 数据库编号(0~15)--------------------------------切换库
+2.set name bob -------------------------存储
+2.get name -----------------------------获取
+3.keys * -------------------------------打印所有变量
+4.keys a? ------------------------------一个?代表一个字符
+5.exists bob----------------------------测试是否存在
+6.ttl bob-------------------------------查看该变量有效时间
+7.type bob------------------------------查看改变量类型
+8.move bob 1----------------------------移动变量到指定库(默认有0-15个库)
+9.expire bob 10-------------------------指定变量有效时间(默认永久有效)
+10.del bob------------------------------删除变量
+11.flushall-----------------------------删除所有库的变量
+12.flushdb------------------------------删除当前库所有数据
+13.save---------------------------------保存所有变量到硬盘
+14.shutdown-----------------------------关闭redis服务
+15.info replication---------------------查看主从配置信息
+当redis服务shutdown时自动保存到硬盘
+#############################################################################
+vim /etc/redis/6379.conf ----------修改ip地址
+port 6350
+bind 192.168.4.50
+##########################################################################
+redis-cli -h 192.168.4.50 -p 6350  shutdown --------关闭redis服务
+vim /etc/init.d/redis_6379-----------修改
+43             $CLIEXEC -h 192.168.4.50 -p 6350 shutdown
+###############################################################################
+redis-cli常用选项:
+-h ----------------------ip地址 如:127.0.0.1
+-p ----------------------端口号
+-s ----------------------
+-a ----------------------密码
+-u ----------------------服务器URI
+-r ----------------------
+-i ----------------------
+-n ----------------------
+-x ----------------------
+-d ----------------------
+-c ----------------------集群模式
+##############################################################################
+vim /etc/redis/6379.conf配置选项说明
+1.port 6379--------------------------端口
+2.bind 127.0.0.1---------------------ip地址
+3.tcp-backlog 511--------------------tcp连接总数
+4.timeout 0 -------------------------连接超时时间
+5.daemonize yes----------------------守护进程方式运行
+6.databases 16 ----------------------数据库个数
+7.logfile /var/log/redis_6379.log----pid文件
+8.maxclients 10000-------------------服务并发连接数量
+9.dir /var/lib/redis/6379------------数据库目录
+内存管理
+内存清除策
+volatile-lru-------------------------最近最少使用(针对设置了TTL的key)
+allkeys-lru--------------------------删除最少使用的key
+volatile-random----------------------在设置了TTL的key里随机移除
+allkeys-random-----------------------随机移除key
+volatile-ttl(minor TTL)--------------移除最近过期的key
+noeviction---------------------------不删除，写满时报错
+选项默认设置
+maxmemory <bytes>--------------------最大内存
+maxmemory-policy noeviction----------定义使用策
+maxmemory-samples 5 -----------------选取模板数据的
+#############################################################################
+设置服务连接密码
+vim /etc/redis.6370.conf
+501 requirepass 123456
+:wq
+redis-cli -h 192.168.4.50 -p 6350 -a 123456 shutdown
+/etc/init.d/redis_6379 start
+##############################################################################
+部署LNMP+Redis
+一.在57主机配置LNMP
+1.useradd -s /sbin/nologin-----创建用户
+2.安装依赖包:yum -y install gcc prce-devel zlib-devel
+3.安装nginx源码包
+./configure --prefix=/usr/local/nginx
+4.make && make install
+5.rpm -ivh php-fpm-5.4.16-42.el7.x86_64.rpm
+写测试页面、修改nginx配置文件(把解析动态网页打开)
+/usr/local/nginx/sbin/nginx -t ----测试nginx配置文件是否有错误
+/usr/local/nginx/sbin/nginx -------启服务
+yum -y install mariadb-server php-mysql
+################################################################################
+二配置PHP支持Redis(57主机)
+1.tar -zxvf redis-4.0.8.tar.gz
+cd redis-4.0.8
+make && make install
+初始化:./utils/install_server.sh
+2.redis-cli
+ping 
+set name bob
+get name
+3.安装php扩展
+yum -y install autoconf automake-----依赖包
+yum -y install php-devel-5.4.16-42.el7.x86_64.rpm
+tar -zxvf php-redis-2.2.4.tar.gz
+cd phpredis-2.2.4
+/usr/bin/phpize
+./configure --with-php-config=/usr/bin/php-config
+make
+make install
+vim /etc/php.ini
+728 extension_dir = "/usr/lib64/php/modules/"------------指定模块目录
+730 extension = "redis.so"-------------------------------
+php -m | grep -i redis  ---------------------------------检测是否支持模块redis
+vim /usr/local/nginx/html/test.php
+<?php
+$redis = new redis();
+$redis->connect("127.0.0.1",6379);
+$redis->set("redistest","66666");
+echo $redis->get("redistest");
+?>
+:wq
+curl http://192.168.4.57:/test.php
+
+三、在主机55上:
+yum -y install mysql数据库
+create database gamedb;
+create table gamedb.user(name char(15),password char(6));
+grant select,insert on gamedb.* to admin@"192.168.4.57" identified by "AA12..aa";
+(一)在57主机操作以下
+ls /usr/local/nginx/html
+index.html  reg.php  test.html  test.php
+{index.html
+<html>
+<form action="reg.php" method="post">
+<h1> reg login user info :</h1>
+<h3>LoginName: </h3><input type="text" name="name" size="20" maxlength="255"/>
+<br />
+<br />
+<h3>LoginPass: </h3><input type="text" name="password" size="20" maxlength="255"/>
+<br />
+<br />
+<h3><input type="submit" name="submit" value="SUBMIT" /></h3></p>
+</form>
+</html>  }
+{ reg.php
+<?php
+$servername = "192.168.4.55";
+$username = "admin";
+$password = "AA12..aa";
+$dbname = "gamedb";
+$conn = new mysqli($servername, $username, $password, $dbname);
+if ($conn->connect_error) {
+    die("link fail: " . $conn->connect_error);
+}else{echo "link mysql Ok"; echo "       ";}
+$username=$_POST['name'];
+$userpassword=$_POST['password'];
+$sql="insert into user (name,password) values ('$username','$userpassword')";
+if($conn->query($sql)){echo "insert data ok"; }
+$conn->close();
+?> }
+
+firefox http://192.168.4.57
+##################################################################################
+                                   redis集群
+部署集群环境
+• redis 服务器 ip 地址及端口规划
+– node1 192.168.4.51 6351
+– node2 192.168.4.52 6352
+– node3 192.168.4.53 6353
+– node4 192.168.4.54 6354
+– node5 192.168.4.55 6355
+– node6 192.168.4.56 6356
+1.安装#yum -y install gcc
+#tar -zxvf redis-4.0.8.tar.gz
+#cd redis-4.0.8/
+#make
+#make install
+#./utils/install_server.sh
+
+2.#vim /etc/redis/redis.conf(起集群配)
+70、 bind IP地址 ----------------------------------------------// 只写物理接口 IP 地址
+136、daemonize yes-----------------------//守护进程方式运行
+91、 port xxxx---------------------------//端口号不要使用默认的 6379
+815、cluster-enabled yes-----------------// 开启集群
+823、cluster-config-file nodes.conf------// 集群的配置文件不要使用默认的名称
+829、cluster-node-timeout 5000-----------// 请求超时 5 秒
+
+3.cluster info---------------------------查看集群状态
+cluster nodes----------------------------查看集群有那些机器
+##########################################################################
+51做管理主机即做集群主机
+scp /root/redis-3.2.1.gem 192.168.4.51:/root/
+scp /root/ruby-devel-2.0.0.648-30.el7.x86_64.rpm 192.168.4.51:/root/
+1.yum -y install ruby rubygems
+2.rpm -ivh --nodeps ruby-devel-2.0.0.648-30.el7.x86_64.rpm
+3.gem install redis-3.2.1.gem
+4.cd /root/redis/redis-4.0.8/src/
+ls *.rb ------------>redis-trib.rb
+mkdir /root/bin
+cp redis-trib.rb   /root/bin
+
+在管理主机创建redis集群(51主机)
+1、node1 src]#./redis-trib.rb create --replicas 1 
+192.168.4.51:6351     192.168.4.52:6352     192.168.4.53:6353 
+192.168.4.54:6354    192.168.4.55:6355     192.168.4.56:6356
+2、检查redis-cli -h 192.168.4.XX -p 63XX
+2.1 cluster info-----查看集群信息   2.2 cluster nodes---------查看集群节点信息
+3.在客户端连接任意一台主机
+
+###################################################################################
+                                        管理redis集群:
+一、向集群里添加新的redis(master)服务(新的主机)，角色是master(主机):配置步棸
+1.装包、初始化、启用集群配置、重起服务--------------->配置新master的主机配置
+2.添加master主机歩鄹
+redis-trib.rb add-node 新主机ip:端口   管理主机ip:端口------------------------>添加master主机
+重新分片
+redis-trib.rb reshard  管理主机ip:端口--------->redis-trib.rb reshard 192.168.4.51:6351  
+指定移除hast槽个数、指定接受hash槽主机ip
+
+二、向集群里添加新的redis(slave)服务(新的主机)，角色是slave(主机):配置步棸
+1.装包、初始化、启用集群配置、重起服务--------------->配置新slave的主机配置
+2.添加slave主机歩鄹
+redis-trib.rb add-node --slave slave主机ip:端口   添加到master主机ip:端口
+三、移除master主机
+1.重新分片释放占用的hash槽：redis-trib.rb reshard 移除master主机ip:端口
+指定移除hash槽个数、指定接受hash槽主机id、指定移除hash槽 主机id
+2.移除master主机：redis-trib.rb del-node 管理主机ip:端口  移除master主机id
+四、移除slave主机
+redis-trib.rb del-node 管理主机ip:端口   移除slave主机id
+##############################################################################
+redis-trib.rb   选项  参数
+选项
+add-node-------------------添加master主机
+check----------------------检测集群
+reshard--------------------重新分片
+add-node --slave ----------添加slave主机
+del-node-------------------删除主机或移出主机
+cluster reset
+相关知识：redis 内存数据集大小上升到一定大小的时候，就会施行数据淘汰策略。redis 提供 6种数据淘汰策略：
+
+voltile-lru：从已设置过期时间的数据集（server.db[i].expires）中挑选最近最少使用的数据淘汰
+
+volatile-ttl：从已设置过期时间的数据集（server.db[i].expires）中挑选将要过期的数据淘汰
+
+volatile-random：从已设置过期时间的数据集（server.db[i].expires）中任意选择数据淘汰
+
+allkeys-lru：从数据集（server.db[i].dict）中挑选最近最少使用的数据淘汰
+
+allkeys-random：从数据集（server.db[i].dict）中任意选择数据淘汰
+
+no-enviction（驱逐）：禁止驱逐数据
+#######################################################################################
+                                   redis主从复制    slave(系留)
+主从复制工作原理：
+从向主发送同步命令
+################################################################################
+一主一从模式: 192.168.4.51、192.168.4.52
+规划、52主机做51主机的从库
+一、配置从库
+1.info replication -------------------查看主从配置信息;replication(楼普累楼k神)
+2.slaveof 主库(master)ip与端口----------->slaveof 192.168.4.51 6351
+从库变成主库(反客为主)
+slaveof no one
+#################################################################################
+设置从库永久配置文件
+vim /etc/redis/6379.conf
+282 # slaveof <masterip> <masterport>
+283 slaveof 192.168.4.51 6351
