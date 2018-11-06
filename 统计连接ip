@@ -1,0 +1,7 @@
+找出远程连接失败ip地址与统计远程连接失败ip地址数量 /var/log/secure/日志； sort-->分类； uniq -c 统计数量
+grep "Failed" /var/log/secure | awk '{print $(NF-3)}' | sort | uniq -c | awk '{print $1"="$2;}'
+
+
+
+
+dd if=/dev/zero of=/b.txt bs=1M count=100000
