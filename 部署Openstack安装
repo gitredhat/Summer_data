@@ -1,0 +1,484 @@
+在真机；配置网络yum源(首先得有镜像:CentOS7-1708.iso 、 RHEL7-extras.iso 、 RHEL7OSP-10.iso)
+分别挂载到ftp下:CentOS 、RHEL7-extras 、RHEL7OSP 此三个目录下
+一、首创建创建两台虚拟机
+虚拟机1:
+主机名: openstack； 内存 9.5G ； 硬盘系统 50G ； 网卡 2块分别添加网络接口vbr(192.168.1.11) 、provate1(192.168.4.11)；
+两张网卡是网络网卡；
+创建一个空硬盘 20G 空盘
+##################################################################################################################
+真机操作]#
+一(1)、创建前端虚拟机(openstack)配置文件
+1、cd /var/lib/libvirt/images/
+qemu-img create -b node.qcow2 -f qcow2 openstack.img 50G  注意:node.qcow2是虚拟机后端模版； -b 指定虚拟机后端模版
+2、qemu-img create -f  qcow2 disk05.img 20G   //创建空硬盘
+##################################################################################################################
+3、vim /etc/libvirt/qemu/openstack.xml   //直接拷贝
+<!--
+WARNING: THIS IS AN AUTO-GENERATED FILE. CHANGES TO IT ARE LIKELY TO BE
+OVERWRITTEN AND LOST. Changes to this xml configuration should be made using:
+  virsh edit openstack01
+or other application using the libvirt API.
+-->
+<domain type='kvm'>
+  <name>openstack01</name>
+  <uuid>8ed626ec-8db6-4825-952b-3c62e3fd5bff</uuid>
+  <memory unit='KiB'>9848000</memory>
+  <currentMemory unit='KiB'>9848000</currentMemory>
+  <vcpu placement='static'>2</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.0.0'>hvm</type>
+    <boot dev='hd'/>
+    <bootmenu enable='yes'/>
+    <bios useserial='yes'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none'/>
+  <clock offset='localtime'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/var/lib/libvirt/images/openstack01.img'/>
+      <target dev='vda' bus='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </disk>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/var/lib/libvirt/images/disk05.img'/>
+      <target dev='vdb' bus='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x07' function='0x0'/>
+    </disk>
+    <controller type='usb' index='0' model='piix3-uhci'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x2'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'/>
+    <controller type='virtio-serial' index='0'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </controller>
+    <interface type='bridge'>
+      <mac address='52:54:00:b6:ce:34'/>
+      <source bridge='vbr'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+    <interface type='bridge'>
+      <mac address='52:54:00:81:1d:8d'/>
+      <source bridge='provate1'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <memballoon model='virtio'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </memballoon>
+  </devices>
+</domain>
+:wq
+#########################################################################################################################
+4、virsh define /etc/libvirt/openstack.xml       //告诉真机要创建openstack虚拟机
+5、virsh start openstack                         //启动虚拟机；帐号、密码是虚拟机后端模版的帐号、密码；并在openstack虚拟机操作以下操作
+##########################################################################################################################
+虚拟机操作以下]# 
+6、vim /etc/sysconfig/network-scripts/ifcfg-eth0 //设置ip地址，或者是动态ip改为静态ip
+DEVICE="eth0"
+ONBOOT="yes"
+IPV6INIT="no"
+IPV4_FATLURE_FATAL="no"
+NM_CONTROLLED="no"
+TYPE="Ethernet"
+BOOTPROTO="static"
+IPADDR="192.168.1.11"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.1.254"
+:wq
+#############################################################################################################################
+7、cd /etc/sysconfig/network-scripts/
+cp ifcfg-eth0 ifcfg-eth1
+11、vim ifcfg-eth1
+DEVICE="eth1"
+ONBOOT="yes"
+IPV6INIT="no"
+IPV4_FATLURE_FATAL="no"
+NM_CONTROLLED="no"
+TYPE="Ethernet"
+BOOTPROTO="static"
+IPADDR="192.168.4.11"
+NETMASK="255.255.255.0"
+:wq
+##############################################################################################################################
+8、vim /etc/hosts
+192.168.1.11 openstack   //再后面添加后四行
+192.168.4.11 openstack
+192.168.1.10 nova01     //此ip是第二台虚拟机
+192.168.4.10 nova01     //此ip是第二台虚拟机
+##############################################################################################################################
+9、vim /etc/resolv.conf
+# Generated by NetworkManager
+nameserver 192.168.1.254
+search vbr
+##############################################################################################################################
+10、vim /etc/chrony.conf  //时间与真机同步
+11、vim /etc/yum.repos.d/CentOS.repo
+[CentOS]
+name=CentOS
+baseurl=ftp://176.121.213.70/CentOS
+enabled=1
+gpgcheck=1
+
+[RHEL7-extras]
+name=RHEL7-extras
+baseurl=ftp://176.121.213.70/RHEL7-extras
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_01]
+name=RHEL7OSP_01
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-devtools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_02]
+name=RHEL7OSP_02
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-optools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_03]
+name=RHEL7OSP_03
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_04]
+name=RHEL7OSP_04
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-tools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_05]
+name=RHEL7OSP_05
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-mon-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_06]
+name=RHEL7OSP_06
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-osd-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_07]
+name=RHEL7OSP_07
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-tools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_08]
+name=RHEL7OSP_08
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-agent-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_09]
+name=RHEL7OSP_09
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-installer-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_10]
+name=RHEL7OSP_10
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-main-rpms
+enabled=1
+gpgcheck=0
+:wq
+###############################################################################################################################
+12、yum clesn all ; yum repolist
+一共：10731包
+13、下载或者关闭 NetworkManager服务 ；禁用 SELINUX ；卸载 firewalld
+14、创建卷组(卷组创建于名为cinder-volumes的卷组)
+15、yum  -y install lvm2
+pvcreate /dev/vdb     //创建物理卷 ；  vgcreate cinder-volumes /dev/vdb 创建卷组
+16、导入签名密钥
+rpm --import ftp://176.121.213.70/CentOS/RPM-GPG-KEY-CentOS-7
+17、安装额外软件包
+yum install -y qemu-kvm libvirt-client libvirt-daemon libvirt-daemon-driver-qemu python-setuptools
+18、安装packstack
+yum install -y openstack-packstack
+19、生成应答文件
+packstack --gen-answer-file answer.ini
+20、修改应答文件
+vim answer.ini
+CONFIG_DEFAULT_PASSWORD=Taren1
+CONFIG_SWIFT_INSTALL=n
+CONFIG_NTP_SERVERS=192.168.1.253
+CONFIG_CINDER_VOLUMES_CREATE=n
+CONFIG_NEUTRON_ML2_TYPE_DRIVERS=flat,vxlan
+CONFIG_NEUTRON_ML2_VXLAN_GROUP=239.1.1.5
+CONFIG_NEUTRON_OVS_BRIDGE_MAPPINGS=physnet1:br-ex
+CONFIG_NEUTRON_OVS_BRIDGE_IFACES=br-ex:eth0
+CONFIG_NEUTRON_OVS_TUNNEL_IF=eth1
+CONFIG_PROVISION_DEMO=n
+:wq
+#############################################################################################################################
+第二台虚拟机配置
+1、主机名: nova01
+内存 5G ; 硬盘系统 50G ； 网卡 2块分别添加网络接口vbr 、provate1
+#############################################################################################################################
+真机操作]#
+一(二)、创建前端虚拟机(nova01)配置文件
+1、cd /var/lib/libvirt/images/
+qemu-img create -b node.qcow2 -f qcow2 nova01.img 50G  注意:node.qcow2是虚拟机后端模版； -b 指定虚拟机后端模版
+#############################################################################################################################
+2、vim /etc/libvirt/qemu/openstack.xml   //
+<!--
+WARNING: THIS IS AN AUTO-GENERATED FILE. CHANGES TO IT ARE LIKELY TO BE
+OVERWRITTEN AND LOST. Changes to this xml configuration should be made using:
+  virsh edit openstack01
+or other application using the libvirt API.
+-->
+<domain type='kvm'>
+  <name>openstack01</name>
+  <uuid>8ed626ec-8db6-4825-952b-3c62e3fd5bff</uuid>
+  <memory unit='KiB'>5548000</memory>
+  <currentMemory unit='KiB'>5548000</currentMemory>
+  <vcpu placement='static'>2</vcpu>
+  <os>
+    <type arch='x86_64' machine='pc-i440fx-rhel7.0.0'>hvm</type>
+    <boot dev='hd'/>
+    <bootmenu enable='yes'/>
+    <bios useserial='yes'/>
+  </os>
+  <features>
+    <acpi/>
+    <apic/>
+  </features>
+  <cpu mode='host-passthrough' check='none'/>
+  <clock offset='localtime'/>
+  <on_poweroff>destroy</on_poweroff>
+  <on_reboot>restart</on_reboot>
+  <on_crash>restart</on_crash>
+  <devices>
+    <emulator>/usr/libexec/qemu-kvm</emulator>
+    <disk type='file' device='disk'>
+      <driver name='qemu' type='qcow2'/>
+      <source file='/var/lib/libvirt/images/openstack01.img'/>
+      <target dev='vda' bus='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x05' function='0x0'/>
+    </disk>
+    <controller type='usb' index='0' model='piix3-uhci'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x01' function='0x2'/>
+    </controller>
+    <controller type='pci' index='0' model='pci-root'/>
+    <controller type='virtio-serial' index='0'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x04' function='0x0'/>
+    </controller>
+    <interface type='bridge'>
+      <mac address='52:54:00:b6:ce:34'/>
+      <source bridge='vbr'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x03' function='0x0'/>
+    </interface>
+    <interface type='bridge'>
+      <mac address='52:54:00:81:1d:8d'/>
+      <source bridge='provate1'/>
+      <model type='virtio'/>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x08' function='0x0'/>
+    </interface>
+    <serial type='pty'>
+      <target port='0'/>
+    </serial>
+    <console type='pty'>
+      <target type='serial' port='0'/>
+    </console>
+    <channel type='unix'>
+      <target type='virtio' name='org.qemu.guest_agent.0'/>
+      <address type='virtio-serial' controller='0' bus='0' port='1'/>
+    </channel>
+    <input type='mouse' bus='ps2'/>
+    <input type='keyboard' bus='ps2'/>
+    <memballoon model='virtio'>
+      <address type='pci' domain='0x0000' bus='0x00' slot='0x06' function='0x0'/>
+    </memballoon>
+  </devices>
+</domain>
+:wq
+###############################################################################################################################
+3、virsh define /etc/libvirt/openstack.xml       //告诉真机要创建openstack虚拟机
+4、virsh start openstack                         //启动虚拟机；帐号、密码是虚拟机后端模版的帐号、密码；并在openstack虚拟机操作以下操作
+###############################################################################################################################
+虚拟机操作以下]# 
+5、vim /etc/sysconfig/network-scripts/ifcfg-eth0 //设置ip地址，或者是动态ip改为静态ip
+DEVICE="eth0"
+ONBOOT="yes"
+IPV6INIT="no"
+IPV4_FATLURE_FATAL="no"
+NM_CONTROLLED="no"
+TYPE="Ethernet"
+BOOTPROTO="static"
+IPADDR="192.168.1.10"
+NETMASK="255.255.255.0"
+GATEWAY="192.168.1.254"
+:wq
+#############################################################################################################################
+6、cd /etc/sysconfig/network-scripts/
+cp ifcfg-eth0 ifcfg-eth1
+11、vim ifcfg-eth1
+DEVICE="eth1"
+ONBOOT="yes"
+IPV6INIT="no"
+IPV4_FATLURE_FATAL="no"
+NM_CONTROLLED="no"
+TYPE="Ethernet"
+BOOTPROTO="static"
+IPADDR="192.168.4.10"
+NETMASK="255.255.255.0"
+:wq
+##############################################################################################################################
+7、vim /etc/hosts
+192.168.1.11 openstack   //再后面添加后四行;//此ip是第一台虚拟机
+192.168.4.11 openstack   //此ip是第一台虚拟机
+192.168.1.10 nova01     //此ip是本机虚拟机
+192.168.4.10 nova01     //此ip是本机虚拟机
+##############################################################################################################################
+8、vim /etc/resolv.conf
+# Generated by NetworkManager
+nameserver 192.168.1.254
+##############################################################################################################################
+9、vim /etc/chrony.conf  //时间与真机同步
+10、vim /etc/yum.repos.d/CentOS.repo
+[CentOS]
+name=CentOS
+baseurl=ftp://176.121.213.70/CentOS
+enabled=1
+gpgcheck=1
+
+[RHEL7-extras]
+name=RHEL7-extras
+baseurl=ftp://176.121.213.70/RHEL7-extras
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_01]
+name=RHEL7OSP_01
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-devtools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_02]
+name=RHEL7OSP_02
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-optools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_03]
+name=RHEL7OSP_03
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_04]
+name=RHEL7OSP_04
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-openstack-10-tools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_05]
+name=RHEL7OSP_05
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-mon-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_06]
+name=RHEL7OSP_06
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-osd-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_07]
+name=RHEL7OSP_07
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhceph-2-tools-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_08]
+name=RHEL7OSP_08
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-agent-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_09]
+name=RHEL7OSP_09
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-installer-rpms
+enabled=1
+gpgcheck=0
+
+[RHEL7OSP_10]
+name=RHEL7OSP_10
+baseurl=ftp://176.121.213.70/RHEL7OSP/rhel-7-server-rhscon-2-main-rpms
+enabled=1
+gpgcheck=0
+:wq
+###############################################################################################################################
+11、yum clesn all ; yum repolist
+一共：10731包
+12、卸载或者关闭 NetworkManager服务 ；禁用 SELINUX ；卸载 firewalld
+13、导入签名密钥
+rpm --import ftp://176.121.213.70/CentOS/RPM-GPG-KEY-CentOS-7
+###############################################################################################################################
+注意在openstack虚拟机操作以下操作
+1、packstack --answer-file answer.ini  //一键部署安装openstack
+
+               • 如果前期环境准备无误,只要耐心等待安装结束即可
+               • 根据主机配置不同,安装过程需要30分钟左右或更久
+               • 如果出现错误,根据屏幕上给出的日志文件进行排错
+##############################################################################################################################
+2、安装完openstack后
+vim /etc/httpd/conf.d/15-horizon_vhost.conf   //打开此文件什么都不需要改，只需要插入一行即可
+   <VirtualHost>
+          ..............  
+  WSGIDaemonProcess apache group=apache processes=3 threads=10 user=apache
+  WSGIProcessGroup apache
+  WSGIScriptAlias /dashboard "/usr/share/openstack-dashboard/openstack_dashboard/wsgi/django.wsgi"
+  WSGIApplicationGroup %{GLOBAL}  //插入此行
+  </VirtualHost>
+  :wq
+##############################################################################################################################
+3、systemc restart httpd
+4、apache graceful
+##############################################################################################################################
+打开浏览器访问： http://192.168.1.11
+提示输入张号 、密码
+帐号root 
+密码:从openstack虚拟机上查：执行 cat keystonerc_admin
+unset OS_SERVICE_TOKEN
+    export OS_USERNAME=admin
+    export OS_PASSWORD=80116f425a6a4f17
+    export OS_AUTH_URL=http://192.168.1.11:5000/v2.0
+    export PS1='[\u@\h \W(keystone_admin)]\$ '
+    
+export OS_TENANT_NAME=admin
+export OS_REGION_NAME=RegionOne
+
+
+密码: 80116f425a6a4f17
+
+此时openstack安装完毕
+                                                                                                          2018-11-15   Summer
+################################################################################################################################
