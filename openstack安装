@@ -3,6 +3,7 @@
 虚拟机1:
 主机名: openstack； 内存 9.5G ； 硬盘系统 50G ； 网卡 2块分别添加网络接口vbr 、provate1；
 创建一个空硬盘 20G 空盘
+##################################################################################################################
 一(1)、创建前端虚拟机(openstack)配置文件
 1、cd /var/lib/libvirt/images/
 qemu-img create -b node.qcow2 -f qcow2 openstack.img 50G  注意:node.qcow2是虚拟机后端模版； -b 指定虚拟机后端模版
