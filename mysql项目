@@ -1,0 +1,313 @@
+一、配置mysql主从同步[192.168.4.160、192.168.4.161]
+一[ 01 ]安装nysql软件[192.168.4.160、192.168.4.161]
+1、下载mysql软件包或源码包安装： mysql-5.7.17.tar
+2、tar -xzvf mysql-5.7.17.tar
+3、rpm -ivh mysql-community-*.rpm 或 yum -y install mysql-community-*.rpm
+4、systemctl start mysqld 或 service mysqld start 、chkconfig mysqld off
+5、 grep "password" /var/log/mysqld.log
+6、mysql -uroot -p"初始密码"
+7、alter user root@"localhost" identified by "AA12..aa"  ---->修改初始密码
+#############################################################################################################################
+一[ 02 ]mysql-master[192.168.4.160]配置：
+1、vim /etc/my.cnf
+[mysqld]
+server-id=160
+log_bin=mysql160
+binlog-format="mixed"
+2、systemctl restart mysqld 或 service mysqld restart
+3、ls /var/lib/mysql/mysql160.*  ----------->查看是否有binlog日志
+4、授权定义slave用户: mysql -uroot -pAA12..aa
+grant replication slave on *.* to userslave@"%" identified by "AA12..aa"
+5、授权测试用户: 
+grant select,insert,update on mysqldb.* to admin@"%" identified by "AA12..aa"
+6、creater database mysqldb; create table mysqldb.user(name char(20),password char(20));
+############################################################################################################################
+一[ 03 ]mysql-slave[192.168.4.161]配置：
+1、vim /etc/my.cnf
+[mysqld]
+server-id=161
+2、systemctl mysqld restart 或 service mysqld restart
+3、mysql -uroot -pAA12..aa
+4、show slave status\G; 
+5、show master status; ------>在192.168.4.160主机查，mysql -uroot -pAA12..aa
+6、change master to master_host="192.168.4.160",master_user="userslave", \
+master_password="AA12..aa",master_log_file="在192.168.4.160主机查；File下：mysql160.000000",  \
+master_log_pod=在192.168.4.160主机查;Position下：1033;
+7、start slave;   show slave status\G;
+8、在客户端访问测试：mysql -h192.168.4.160 -uadmin -pAA12..aa
+use mysqldb;
+insert into user values("lisi",28);
+注意:提前是:客户端要安装mysql软件
+9、在192.168.4.160主机查看是否有记录：mysql -uroot -pAA12..aa
+select * from mysqldb.user;
+##############################################################################################################################
+二、配置maxscale读写分离[192.168.4.162]
+二[ 01 ]安装maxscale软件
+1、下载 maxscale-2.1.2-1.rhel.7.x86_64.rpm
+2、rpm ivh maxscale-2.1.2-1.rhel.7.x86_64.rpm
+3、cp /etc/maxscale.cnf /etc/maxscale.cnf.bak ------------>备份
+4、vim /etc/maxscale.cnf
+##############################################################################################################################
+9 [maxscale]--------------------->#定义服务启动线程的数量
+10 threads=auto
+
+18 [server1]--------------------->#指定第1台数据库服务
+19 type=server
+20 address=192.168.4.160--------->#指定数据库服务ip地址
+21 port=3306 -------------------->#端口号
+22 protocol=MySQLBackend
+
+24 [server2]
+25 type=server
+26 address=192.168.4.161 
+27 port=3306
+28 protocol=MySQLBackend
+
+36 [MySQL Monitor]--------------------->#定义监控的数据库服务器
+37 type=monitor ----------------------->#监视器
+38 module=mysqlmon -------------------->#模块= mysqlmon
+39 servers=server1,server2 ------------>//服务器列表
+40 user=scalemon ---------------------->//用户名
+41 passwd=AA12..aa -------------------->//密码
+42 monitor_interval=10000
+
+53 #[Read-Only Service]---------------->#不定义只读服务
+54 #type=service
+55 #router=readconnroute
+56 #servers=server1,server
+57 #user=myuser
+58 #passwd=mypwd
+59 #router_options=slave
+
+64 [Read-Write Service]---------------->#定义读写分离服务
+65 type=service
+66 router=readwritesplit -------------->#路由器= readwritesplit
+67 servers=server1,server2 ------------>#数据库服务器列表
+68 user=maxscale ---------------------->//用户名
+69 passwd=AA12..aa -------------------->//密码
+70 max_slave_connections=100%
+
+76 [MaxAdmin Service]------------------>定义管理服务
+77 type=service
+78 router=cli
+
+86 #[Read-Only Listener]-------------->#不定义只读服务
+87 #type=listener
+88 #service=Read-Only Service
+89 #protocol=MySQLClient
+90 #port=4008
+
+92 [Read-Write Listener]-------------->#定义读写分离服务使用的端口
+93 type=listener
+94 service=Read-Write Service
+95 protocol=MySQLClient
+96 port=4006
+
+98 [MaxAdmin Listener]--------------->#定义管理服务使用的端口
+99 type=listener
+100 service=MaxAdmin Service
+101 protocol=maxscaled
+102 socket=default
+103 port=4016
+###############################################################################################################################
+5、在mysql-master主机上授权监控用户、读写用户：
+mysql -uroot -pAA12..aa[192.168.4.160]
+grant replication slave,replication client on *.* to scalemon@"%" identified by "AA12..aa";
+grant select on mysql.* to maxscale@"%" identified by "AA12..aa";
+6、在本机[192.168.4.162]启服务：
+maxscale -f /etc/maxscale.cnf 
+netstat -nutlp | grep :4006 , netstat -nutlp | grep :4016
+7、maxadmin -uadmin -pmariadb -p4016
+lisi servers
+8、在客户端测试读写：
+mysql -h192.168.4.162 -P4006 -uadmin -pAA12..aa
+执行select 或 insert 操作
+##############################################################################################################################
+三、配置web_1、web_2[192.168.4.164、192.168.4.165]: LNMP
+1、下载 nginx-1.12.2.tar.gz     lnmp_soft.tar.gz
+2、tar -xzvf nginx-1.12.2.tar.gz   tar -xzvf lnmp_soft.tar.gz
+3、netstat -nutlp | grep :80  ------->如果是apache的http; systemctl stop httpd
+4、yum -y install gcc openssl-devel pcre-devel
+5、useradd -s /sbin/nologin nginx
+6、cd nginx-1.12.2
+./configure --prcfix=/usr/local/nginx
+7、make $$ make install
+8、/usr/local/nginx/sbin/nginx --------------->启服务
+9、echo "<html>
+<form action="reg.php" method="post">
+<h1> reg login user info :</h1>
+<h3>LoginName: </h3><input type="text" name="name" size="20" maxlength="255"/>
+<br />
+<br />
+<h3>LoginPass: </h3><input type="text" name="password" size="20" maxlength="255"/>
+<br />
+<br />
+<h3><input type="submit" name="submit" value="SUBMIT" /></h3></p>
+</form>
+</html> "  > /usr/local/nginx/html/index.html
+################################################################################################################################
+10、echo "<?php
+$servername = "192.168.4.162";
+$serverport = "4006"
+$username = "admin";
+$password = "AA12..aa";
+$dbname = "mysqldb";
+$conn = new mysqli($servername,$username, $password, $dbname,$serverport);
+if ($conn->connect_error) {
+    die("link fail: " . $conn->connect_error);
+}else{echo "link mysql Ok"; echo "       ";}
+$username=$_POST['name'];
+$userpassword=$_POST['password'];
+$sql="insert into user (name,password) values ('$username','$userpassword')";
+if($conn->query($sql)){echo "insert data ok"; }
+$conn->close();
+?>" > /usr/local/nginx/html/reg.php
+11、在客户端测试： curl http://192.168.4.164 \192.168.4.165
+###############################################################################################################################
+四、配置keepalived+DR集群[192.168.4.166]: 
+1、yum -y install ipvsadm keepalived
+2、cp /etc/keepalived/keepalived.conf  /etc/keepalived/keepalived.conf.bak -->备份
+###############################################################################################################################
+3、vim /etc/keepalived/keepalived.conf
+1 ! Configuration File for keepalived
+2 
+3 global_defs {
+4    notification_email {
+5      acassen@firewall.loc
+6      failover@firewall.loc
+7      sysadmin@firewall.loc
+8    }
+9    notification_email_from Alexandre.Cassen@firewall.loc
+10    smtp_server 192.168.200.1
+11    smtp_connect_timeout 30
+12    router_id LVS_DEVEL
+13    vrrp_skip_check_adv_addr
+14    #vrrp_strict
+15    vrrp_garp_interval 0
+16    vrrp_gna_interval 0
+17 }
+18 
+19 vrrp_instance lvsha {
+20     state MASTER
+21     interface eth0
+22     virtual_router_id 51
+23     priority 150
+24     advert_int 1
+25     authentication {
+26         auth_type PASS
+27         auth_pass 123456
+28     }
+29     virtual_ipaddress {
+30         192.168.4.253
+31     }
+32 }
+33 
+34 virtual_server 192.168.4.253 80 {
+35     delay_loop 6
+36     lb_algo rr
+37     lb_kind DR
+38     #persistence_timeout 50
+39     protocol TCP
+40     connect_timeout 3
+41     nb_get_retry 3
+42     delay_before_retry 3
+43 
+44     real_server 192.168.4.162 80 {
+45         weight 1
+46     }
+47     real_server 192.168.4.165 80 {
+48         weight 1
+49     }
+50 }
+###############################################################################################################################
+五、配置keepalived+DR集群[192.168.4.167]: 
+1、yum -y install ipvsadm keepalived
+2、cp /etc/keepalived/keepalived.conf  /etc/keepalived/keepalived.conf.bak -->备份
+##############################################################################################################################
+3、vim /etc/keepalived/keepalived.conf
+1 ! Configuration File for keepalived
+2 
+3 global_defs {
+4    notification_email {
+5      acassen@firewall.loc
+6      failover@firewall.loc
+7      sysadmin@firewall.loc
+8    }
+9    notification_email_from Alexandre.Cassen@firewall.loc
+10    smtp_server 192.168.200.1
+11    smtp_connect_timeout 30
+12    router_id LVS_DEVEL
+13    vrrp_skip_check_adv_addr
+14    #vrrp_strict
+15    vrrp_garp_interval 0
+16    vrrp_gna_interval 0
+17 }
+18 
+19 vrrp_instance lvsha {
+20     state BACKUP
+21     interface eth0
+22     virtual_router_id 51
+23     priority 100
+24     advert_int 1
+25     authentication {
+26         auth_type PASS
+27         auth_pass 123456
+28     }
+29     virtual_ipaddress {
+30         192.168.4.253
+31     }
+32 }
+33 
+34 virtual_server 192.168.4.253 80 {
+35     delay_loop 6
+36     lb_algo rr
+37     lb_kind DR
+38     #persistence_timeout 50
+39     protocol TCP
+40     connect_timeout 3
+41     nb_get_retry 3
+42     delay_before_retry 3
+43 
+44     real_server 192.168.4.162 80 {
+45         weight 1
+46     }
+47     real_server 192.168.4.165 80 {
+48         weight 1
+49     }
+50 }
+###############################################################################################################################
+六、在【192.168.4.166、192.168.4.167】
+1、# ipvsadm -Ln
+
+IP Virtual Server version 1.2.1 (size=4096)
+Prot LocalAddress:Port Scheduler Flags
+  -> RemoteAddress:Port           Forward Weight ActiveConn InActConn
+TCP  192.168.4.253:80 rr
+  -> 192.168.4.162:80             Route   1      0          0         
+  -> 192.168.4.165:80             Route   1      0          0 
+
+2、ip addr show | grep 192.168.4.253
+   inet 192.168.4.253/32 scope global eth0
+
+七、在【192.168.4.164、192.168.4.165】
+1、
+echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore
+echo 2 >  /proc/sys/net/ipv4/conf/lo/arp_announce
+echo 1 >  /proc/sys/net/ipv4/conf/all/arp_ignore
+echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce
+
+2、
+ifconfig lo:1 192.168.4.253
+
+3、vim /etc/rc.local
+echo 1 > /proc/sys/net/ipv4/conf/lo/arp_ignore
+echo 2 >  /proc/sys/net/ipv4/conf/lo/arp_announce
+echo 1 >  /proc/sys/net/ipv4/conf/all/arp_ignore
+echo 2 > /proc/sys/net/ipv4/conf/all/arp_announce
+ifconfig lo:1 192.168.4.253
+
+4、chmod +x /etc/rc.local
+
+八、在客户端测试： firefox http://192.168.4.253
+然后在192.168.4.160、192.168.4.161主机: 查看 mysqldb.user是否插入你刚刚的用户及密码
+
