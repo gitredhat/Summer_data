@@ -1,0 +1,86 @@
+一、安装ansible环境准备
+6台主机分别是:1台：ansible 2台web 2台db 1台cache 并修改主机名称
+1、下载ansible.tar包并解压
+2、利用yum源安装ansible，所以搭建yum源
+3、yum -y install ansible
+4、安装完成验证
+ansible --version
+5、修改ansible配置文件
+vim /etc/ansible/ansible.cfg
+ 14 inventory      = /etc/ansible/hosts ------》默认注释
+ 59 host_key_checking = False ----------------》默认注释
+：wq
+-----------------------------------------------------------------------------------------------------------------------------
+6、在6台主机上配置/etchosts，这里以ansible主机为例子
+cat /etc/hosts
+192.168.1.51 ansible
+192.168.1.52 web1
+192.168.1.53 web2
+192.168.1.54 db1
+192.168.1.55 db2
+192.168.1.56 cache
+-----------------------------------------------------------------------------------------------------------------------------
+7、修改主机定义与分组
+vim /etc/ansible/hosts
+[web]
+web[1:2]
+
+[mysql]
+db1 ansible_ssh_user="root" ansible_ssh_pass="a"
+db2 ansible_ssh_user="root" ansible_ssh_pass="a"
+
+[cache]
+cache
+:wq
+-----------------------------------------------------------------------------------------------------------------------------
+8、测试
+ansible cache -m ping -k
+ansible db1 -m ping
+-----------------------------------------------------------------------------------------------------------------------------
+二、动态主机
+1、mkdir myansible
+2、cd myansible
+3、vim myansible.sh
+#!/bin/bash
+echo '
+{
+"aa" :{
+	"hosts" : ["web1","web2"],
+	"vars"  : {
+	"ansible_ssh_user": "root",
+	"ansible_ssh_pass": "Taren1"
+		}
+	}
+"bb" : ["db1","db2","cache"]
+
+}'
+4、
+vim ansible.cfg
+[defaults]
+inventory = myansible.sh
+host_key_checking = False
+:wq
+5、
+ansible aa -m ping
+ansible bb -m ping -k
+-----------------------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
