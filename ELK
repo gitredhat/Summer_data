@@ -1,0 +1,76 @@
+部署elasticsearch环境准备
+一、准备5台主机，主机分别为(192.168.2.12 、13 、14 、15 、16)
+1、下载elasticsearch安装包，并解压
+2、挂在ftp下贡给搭建yum源   -----------------》在宿主机上操作
+2.1、cd /var/ftp/
+2.2、mkdir elk
+2.3、cp elk.tar /var/ftp/elk/    -----------------------》提前是得有elk.tar包
+2.4、tar -xf elk.tar
+2.5、createrepo .
+----------------------------------------------------------------------------------------------------------
+二、配置主机域名   ----------------------------------------》在5台主机配置，可以使用fou循环拷贝
+vim /etc/hosts
+192.168.2.12 elk1
+192.168.2.13 elk2
+192.168.2.14 elk4
+192.168.2.15 elk3
+192.168.2.16 elk5
+----------------------------------------------------------------------------------------------------------
+三、在5台主机上搭建yum源 并安装elasticsearch，在安装elasticsearch前先安装依赖包java-1.8.0-openjdk
+1、搭建yum源，这里elk1为例子
+[elk]
+name=elk
+baseurl=ftp://192.168.2.254/elk
+enabled=1
+gpgcheck=0
+:wq
+------------------------------------------------------------------------------------------------------------
+四、安装elasticsearch
+yum -y install java-1.8.0-openjdk  elasticsearch 
+systemctl start elasticsearch ,systemctl enable elasticsearch
+netstat -nutlp | grep 9200  ; netstat -nutlp | grep 9300
+curl http://192.168.2.12:9200
+------------------------------------------------------------------------------------------------------------
+说明：可以不用安装ansible的，可以使用for循环将配置主机域名 、yum -y install java-1.8.0-openjdk  elasticsearch拷贝、安装
+三、写一个ansible文件安装另外4台，首先安装ansible软件
+1、下载ansible.tar包并解压
+2、利用yum源安装ansible，所以搭建yum源 -----------------跟以上的yum一样的配置，指定创建目录不一样、包不一样
+3、yum -y install ansible
+4、安装完成验证
+ansible --version
+5、修改ansible配置文件
+vim /etc/ansible/ansible.cfg
+ 14 inventory      = /etc/ansible/hosts ------》默认注释
+ 59 host_key_checking = False ----------------》默认注释
+：wq
+------------------------------------------------------------------------------------------------------------
+6: vim yum.yml
+---
+- hosts: elk
+  remote_user: root
+  tasks:
+    - copy:
+        src: /etc/yum.repos.d/CentOS.repo
+        dest: /etc/yum.repos.d/CentOS.repo
+        owner: root
+        group: root
+        mode: 0644
+    - name: install java-1.8.openjdk,elasticsearch
+      yum:
+        name: java-1.8.0-openjdk,elasticsearch
+        state: latest
+    - service:
+        name: elasticsearch
+        enabled: yes
+        state: started
+------------------------------------------------------------------------------------------------------------
+7: vim /etc/ansible/hosts
+[elk]
+elk[1:5] ansible_ssh_user="root" ansible_ssh_pass="Taren1"
+:wq
+------------------------------------------------------------------------------------------------------------
+
+
+
+
+
