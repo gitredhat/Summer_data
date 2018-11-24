@@ -156,6 +156,66 @@ vim /opt/kibana/config/kibana.yml
 systemctl restart kibana
 ss -antup | grep 5601
 -------------------------------------------------------------------------------------------------------------------------------
+导入数据
+curl -XPOST http://192.168.2.133:9200/_bulk --data-binary @shakespeare.json
+curl -XPOST http://192.168.2.133:9200/oo/xx/_bulk --data-binary @accounts.json
+curl -XPOST http://192.168.2.133:9200/_bulk --data-binary @logs.jsonl
+---------------------------------------------------------------------------------------------------------------
+批量查询
+ "docs":[
+     {
+        "_index":"shakespeare",
+        "_type:":"act",
+        "_id":0
+},
+{
+        "_index":"shakespeare",
+        "_type:":"line",
+        "_id":0
+},
+{
+        "_index":"xixi",
+        "_type:":"haha",
+        "_id":25
+}
+]
+}'
+-------------------------------------------------------------------------------------------------------------------------------
+-------------------------------------------------------------------------------------------------------------------------------
+logstash
+一、安装logstash
+
+二、
+
+
+-------------------------------------------------------------------------------------------------------------------------------
+案例1：
+input{
+  file {
+    path => ["/tmp/a.log"]
+    sincedb_path   =>   "/var/lib/logstash/since.db"
+    start_position =>   "beginning"
+    type  => "http_log"
+ }
+  file {
+    path => ["/var/tmp/b.log"]
+    sincedb_path   =>   "/var/lib/logstash/since.db"
+    start_position =>   "beginning"
+    type  => "nginx_log"
+ }
+}
+filter{ }
+output{
+  stdout{ codec  =>  "rubydebug" }
+}
+--------------------------------------------------------------------------------------------------------------------------------
+/opt/logstash/bin/logstash -f /etc/logstash/logstash.conf
+
+
+
+
+
+
 
 
 
