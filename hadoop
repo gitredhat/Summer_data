@@ -1,0 +1,66 @@
+安装hadoop准备
+一、配置/etc/hosts 、主机名
+二、安装依赖关系
+1、yum -y install java-1.8.0-openjdk-devel
+三、从官方https://www.apache.org/下载hadoop-2.7.3.tar.gz
+1、解压tar -zxf hadoop-2.7.3.tar.gz
+2、mv hadoop-2.7.3 /usr/local/hadoop
+3、cd /usr/local/hadoop
+4、./etc/hadoop/
+vim hadoop-env.sh
+修改25行 
+export JAVA_HOME="/usr/lib/jvm/java-1.8.0-openjdk-1.8.0.131-11.b12.el7.x86_64/jre"
+修改33行
+export HADOOP_CONF_DIR="/usr/local/hadoop/etc/hadoop"
+5、cd /usr/local/hadoop
+./bin/hadoop version
+
+Hadoop 2.7.3
+Subversion https://git-wip-us.apache.org/repos/asf/hadoop.git -r baa91f7c6bc9cb92be5982de4719c1c8af91ccff
+Compiled by root on 2016-08-18T01:41Z
+Compiled with protoc 2.5.0
+From source with checksum 2e4ce5f957ea4db193bce3734ff29ff4
+This command was run using /usr/local/hadoop/share/hadoop/common/hadoop-common-2.7.3.jar
+
+6、测试：mkdir oo
+cp *.txt oo/
+./bin/hadoop jar share/hadoop/mapreduce/hadoop-mapreduce-examples-2.7.3.jar wordcount oo xx
+7、cat part-r-00000
+--------------------------------------------------------------------------------------------------------------------------------
+8、hadoop
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
