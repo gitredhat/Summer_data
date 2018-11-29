@@ -62,6 +62,7 @@ repolist 9591个包
 3、导入gpg key(导入数字签名)
 rpm --import ftp://宿主机ip/CentOS/RPM-GPG-KEY-CentOS-7
 4、安装支持分区扩展(扩容)软件
+LANG=en_US.UTF-8
 yum install -y cloud-utils-growpart
 5、安装常用工具包:
 yum -y install net-tools bash-completion vim-enhanced bridge-utils psmisc
