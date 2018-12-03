@@ -32,7 +32,7 @@ server-id=161
 5、show master status; ------>在192.168.4.160主机查，mysql -uroot -pAA12..aa
 6、change master to master_host="192.168.4.160",master_user="userslave", \
 master_password="AA12..aa",master_log_file="在192.168.4.160主机查；File下：mysql160.000000",  \
-master_log_pod=在192.168.4.160主机查;Position下：1033;
+master_log_pos=在192.168.4.160主机查;Position下：1033;
 7、start slave;   show slave status\G;
 8、在客户端访问测试：mysql -h192.168.4.160 -uadmin -pAA12..aa
 use mysqldb;
