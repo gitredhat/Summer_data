@@ -114,13 +114,14 @@ select * from mysqldb.user;
 mysql -uroot -pAA12..aa[192.168.4.160]
 grant replication slave,replication client on *.* to scalemon@"%" identified by "AA12..aa";
 grant select on mysql.* to maxscale@"%" identified by "AA12..aa";
+grant select,create,insert on mydb.* admin@"%" identified by "AA12..aa"; ------->测试用户
 6、在本机[192.168.4.162]启服务：
 maxscale -f /etc/maxscale.cnf 
 netstat -nutlp | grep :4006 , netstat -nutlp | grep :4016
 7、maxadmin -uadmin -pmariadb -p4016
 lisi servers
 8、在客户端测试读写：
-mysql -h192.168.4.162 -P4006 -uadmin -pAA12..aa
+mysql -h192.168.4.162 -uadmin -pAA12..aa
 执行select 或 insert 操作
 ##############################################################################################################################
 三、配置web_1、web_2[192.168.4.164、192.168.4.165]: LNMP
